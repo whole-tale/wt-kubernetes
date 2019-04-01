@@ -7,6 +7,8 @@ C_BRT_GREEN="\e[92m"
 C_BRT_RED="\e[91m"
 C_BRT_GRAY="\e[37m"
 
+LOG=kube.log
+
 set -o pipefail
 
 run() {
