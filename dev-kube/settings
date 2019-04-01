@@ -1,0 +1,94 @@
+
+#
+# Cluster type. Supported values are:
+#	"gke": Google Kubernetes Engine
+#	"minikube": Local cluster with minikube
+#	"none": if you want to manually configure the cluster up to the point
+#	        where kubectl can take over (can be used with minikube)
+#
+
+CLUSTER_TYPE="minikube"
+
+#
+# Uncomment and set to use a specific GKE project id instead of the default
+#
+# GKE_PROJECT_ID="<my-project-id>"
+
+#
+# Uncomment and set to use a specific region
+#
+# GKE_COMPUTE_REGION="us-west1-a"
+
+#
+# VM type to use with minikube
+#
+
+MINIKUBE_VM_TYPE="virtualbox"
+
+#
+# Change to use a custom cluster name
+#
+
+CLUSTER_NAME="wholetale"
+
+#
+# Size of mongo config volume
+#
+
+VOLSZ_MONGO_CFG="20Mi"
+
+#
+# Size of mongo storage volume
+#
+
+VOLSZ_MONGO_DATA="200Mi"
+
+#
+# Size of registry storage
+#
+
+VOLSZ_REGISTRY_STORAGE="20Mi"
+
+#
+# Size of WholeTale physical storage (for caching datasets)
+#
+
+VOLSZ_GIRDER_PS="200Mi"
+
+#
+# Type of volumes to create if no specific volumes
+# are manually specified using volume-<name>.yaml files. Will
+# use volume-auto-<AUTO_VOLUME_TYPE>.taml. Currently supported
+# volume types are:
+#     * local - for use with minikube; creates the volumes in
+#               local directories inside volume-dirs/
+#
+
+AUTO_VOLUME_TYPE=local
+
+#
+# The range of ports allowed for exposing cluster services
+# to the outside world.
+#
+
+EXTERNAL_PORT_RANGE=1000-10000
+
+#
+# The external cluster port to map Girder to. This must fall
+# within EXTERNAL_PORT_RANGE
+#
+
+GIRDER_EXTERNAL_PORT=8080
+
+#
+# The domain name of the cluster to configure ingress
+#
+
+DOMAIN_NAME=local.wholetale.org
+
+#
+# Globus app secrets
+#
+
+GLOBUS_CLIENT_ID=""
+GLOBUS_CLIENT_SECRET=""

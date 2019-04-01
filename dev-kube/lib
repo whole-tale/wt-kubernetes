@@ -1,0 +1,313 @@
+#!/bin/bash
+
+C_MAGENTA="\e[35m"
+C_DEFAULT="\e[39m"
+C_BRT_YELLOW="\e[93m"
+C_BRT_GREEN="\e[92m"
+C_BRT_RED="\e[91m"
+C_BRT_GRAY="\e[37m"
+
+LOG=kube.log
+
+set -o pipefail
+
+logCommand() {
+	echo $'\n\n' >> $LOG
+	echo "$@" >>$LOG
+	echo $'\n' >> $LOG
+}
+
+run() {
+	local NAME OUT EC
+	NAME="$1"
+	shift
+	logCommand "$@"
+	OUT=`"$@" 2>&1 | tee -a $LOG` #`
+	EC=$?
+	
+	if [ "$EC" != "0" ]; then
+		echo -e "[${C_BRT_RED}$NAME failed${C_DEFAULT}]"
+		echo -e "${C_BRT_YELLOW}Exit code: $EC${C_DEFAULT}"
+		
+		if [ "$OUT" != "" ]; then
+			echo -e "${C_BRT_YELLOW}$OUT${C_DEFAULT}"
+		fi
+		
+		exit 1
+	fi
+}
+
+runc() {
+	local NAME OUT EC
+	NAME="$1"
+	shift
+	logCommand "$@"
+	OUT=`eval "$@" 2>&1 | tee -a $LOG` #`
+	EC=$?
+	
+	if [ "$EC" != "0" ]; then
+		echo -e "[${C_BRT_RED}$NAME failed${C_DEFAULT}]"
+		echo -e "${C_BRT_YELLOW}Exit code: $EC${C_DEFAULT}"
+		
+		if [ "$OUT" != "" ]; then
+			echo -e "${C_BRT_YELLOW}$OUT${C_DEFAULT}"
+		fi
+		
+		exit 1
+	fi
+}
+
+runif() {
+	if [ "$1" != "" ]; then
+		shift
+		run "$@"
+	else
+		echo -e "$2... [${C_BRT_YELLOW}skipped${C_DEFAULT}]"
+	fi
+}
+
+mustBeSet() {
+	local NAME VAL
+	while [ "$1" != "" ]; do
+		NAME=$1
+		eval VAL=\$$NAME
+		if [ "$VAL" == "" ]; then
+			fail "${C_BRT_RED}Missing $1${C_DEFAULT}"
+		fi
+		shift
+	done
+}
+
+fail() {
+	echo -e "${C_BRT_RED}$1${C_DEFAULT}"
+	exit 1
+}
+
+# prepyaml <name> <file> [<dest>]
+#
+#     Copies <file>.[ty]aml to .<dest>.yaml or .<file>.yaml with
+#     optional substitution of environment variables for .taml 
+#     files.
+#
+#     <name>: A name for display purposes
+#     <file>: The .yaml or .taml file name without the extension.
+#             If a <file>.taml file exists, it will be processed
+#             through envsubst and the output stored in either 
+#             .<dest>.yaml if specified or in .<file>.yaml. If 
+#             <file>.taml does not exist, <file>.yaml will be 
+#             copied directly to .<dest>.yaml or .<file>.yaml as
+#             above.
+#     <dest>: An optional destination name without the .yaml 
+#             extension. If not specified, .<file> will be used 
+#             instead.
+prepyaml() {
+	local NAME="$1"
+	local FILE="$2"
+	local DEST="$3"
+	
+	if [ "$DEST" == "" ]; then
+		DEST=".$FILE.yaml"
+	else
+		# add extension
+		DEST="$DEST.yaml"
+	fi
+	
+	if [ -f "$FILE.taml" ]; then
+		runc "Processing $NAME template" "cat ./$FILE.taml | envsubst > tmp/$DEST"
+	elif [ -f "${FILE}.yaml" ]; then
+		runc "Processing $NAME template" "cp ./$FILE.yaml tmp/$DEST"
+	else
+		fail "Configuration file $FILE.yaml or $FILE.taml not found"
+	fi
+}
+
+# delyaml <name>
+#
+#      Deletes .<name>.yaml unless $KEEP_TEMPS is set to 1.
+#
+delyaml() {
+	local NAME="$1"
+	if [ "$KEEP_TEMPS" != "1" ]; then
+		runc "Deleting temporary file $NAME.yaml" rm "tmp/$NAME.yaml"
+	fi
+}
+
+#
+# contains <string> <cmd> [<args>]*
+# 
+#     Runs <cmd> [<args>] and checks if the output
+#     contains <string>. If so, it returns 0 (true)
+#     otherwise 1 (false). Gotta love this reverse
+#     logic coming from exit codes.
+
+contains() {
+	local STR="$1"
+	shift
+	logCommand "$@"
+	
+	"$@" 2>&1 | tee -a $LOG | grep -q "$STR" 2>&1 >> $LOG
+	if [ "${PIPESTATUS[2]}" == "0" ]; then
+		return 0
+	else
+		return 1
+	fi
+}
+
+# exists <type> <name>
+# 
+#     Checks if a kubernetes resource of type <type> and matching <name> 
+#     exists. For example, "exists pod test" returns 1 if a pod containing
+#     "test" in its name exists and 0 otherwise.
+#
+#     <type>: The type of kubernetes resource to check for
+#     <name>: A string to look for in the existing list of resources of 
+#             type <type>.
+#
+exists() {
+	contains "$2" kubectl get "$1"
+	return $?
+}
+
+shouldStart() {
+	# Start service if either CONTINUE is not set or if 
+	# CONTINUE is set and the service is not started
+	if [ "$CONTINUE" == "1" ]; then
+		echo -n "Checking if $1 should be started... "
+		if exists pod "$1" ; then
+			echo -e "${C_BRT_GREEN}no${C_DEFAULT}"
+			return 1
+		else
+			echo -e "${C_BRT_YELLOW}yes${C_DEFAULT}"
+			return 0
+		fi
+	else
+		return 0
+	fi
+}
+
+getArgs() {
+	ARGS=()
+	NARGS=1
+	TYPE="$1"
+	shift
+	while [ "$1" != "" ]; do
+		case "$1" in
+			-*)
+				;&
+			"")
+				if [ "$NARGS" == "1" ]; then
+					fail "Missing arguments for $TYPE"
+				fi
+				return
+				;;
+			*)
+				ARGS+=("--from-file" "$1")
+				shift
+				NARGS=$((NARGS + 1))
+				;;
+		esac
+	done
+}
+
+createFromYaml() {
+	local LABEL="$1"
+	local SRC="$2"
+	local DEST="$3"
+	
+	if [ "$DEST" == "" ]; then
+		DEST=".$SRC"
+	fi
+	
+	prepyaml "$SRC" "$SRC" "$DEST"
+	run "Creating $LABEL" kubectl create -f "tmp/$DEST.yaml"
+}
+
+startService() {
+	local NAME="$1"
+	shift
+	if ! exists service "$NAME" ; then
+		createFromYaml "service $NAME" "service-$NAME"
+	fi
+	if ! exists deployment "$NAME" ; then
+		while [ "$1" != "" ]; do
+			getArgs "$@"
+			if [ "$1" == "-s" ]; then
+				TYPE="secret"
+				EXTRA="generic"
+			elif [ "$1" == "-c" ]; then
+				TYPE="configmap"
+				EXTRA=""
+			else
+				fail "Unknown file types: $1"
+			fi
+			shift $NARGS
+			
+			if exists $TYPE "$NAME-$TYPE" ; then
+				run "Deleting old $NAME $TYPE" kubectl delete $TYPE "$NAME-$TYPE"
+			fi
+			run "Creating $NAME $TYPE" kubectl create $TYPE $EXTRA "$NAME-$TYPE" "${ARGS[@]}"
+			run "Labeling $NAME $TYPE" kubectl label $TYPE "$NAME-$TYPE" "app=WholeTale"
+		done
+		createFromYaml "deployment $NAME" "deployment-$NAME"
+		echo -n -e "${C_BRT_GREEN}$NAME${C_DEFAULT} "
+	else
+		echo -n -e "${C_BRT_YELLOW}$NAME${C_DEFAULT} "
+	fi
+}
+
+createVolume() {
+	local NAME="$1"
+	local SIZE="$2"
+	export CLAIM_NAME="$NAME-volume-claim"
+	export VOLUME_SIZE="$SIZE"
+	export VOLUME_NAME="$NAME-volume"
+	export SHORT_NAME="$NAME"
+	
+	if ! exists persistentvolume "$VOLUME_NAME" ; then
+		if [ -f "./volume-$NAME.taml" ] || [ -f "./volume-$NAME.yaml" ] ; then
+			createFromYaml "volume $NAME" "volume-$NAME"
+		else
+			# Use auto
+			if [ "$AUTO_VOLUME_TYPE" == "local" ]; then
+				run "Creating volume directory $NAME" mkdir -p "volume-dirs/$NAME"
+			fi
+			createFromYaml "volume $NAME" "volume-auto-$AUTO_VOLUME_TYPE" ".volume-$NAME"
+		fi
+		echo -n -e "${C_BRT_GREEN}$NAME${C_DEFAULT} "
+	else
+		echo -n -e "${C_BRT_YELLOW}$NAME${C_DEFAULT} "
+	fi
+	
+	if ! exists persistentvolumeclaim "$CLAIM_NAME" ; then
+		createFromYaml "volume claim $NAME" "volume-claim" ".volume-claim-$NAME"
+	fi
+}
+
+createTLSSecret() {
+	local NAME="$1"
+	local KEY="$2"
+	local CRT="$3"
+	
+	if ! exists secret "$NAME" || [ "$CONTINUE" == "0" ] ; then
+		run "Creating $NAME" kubectl create secret tls "$NAME" "--key=$KEY" "--cert=$CRT"
+		run "Labeling $NAME" kubectl label secret "$NAME" "app=WholeTale"
+	fi
+
+}
+
+createSecretFromFile() {
+	local NAME="$1"
+	local FILE="$2"
+	
+	if ! exists secret "$NAME" || [ "$CONTINUE" == "0" ] ; then
+		createFromYaml "secret $NAME" "$FILE"
+	fi
+}
+
+checkDir() {
+	local MYPATH=`realpath "$0"`
+	export MY_ABS_DIR=`dirname "$MYPATH"`
+	if [ ! -f "$MY_ABS_DIR/deploy.sh" ]; then
+		fail "Please invoke deploy.sh from its own directory"
+	fi
+}

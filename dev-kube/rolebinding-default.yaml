@@ -1,0 +1,17 @@
+#
+# This is a bit of a hack. A separate role for
+# in-cluster management should be created with
+# specific permissions.
+#
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: default-view
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: default

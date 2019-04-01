@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry
+  labels:
+    app: WholeTale
+spec:
+  ports:
+  - port: 444
+  selector:
+    app: WholeTale
+    tier: backend
+  clusterIP: None

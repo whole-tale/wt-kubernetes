@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: girder
+  labels:
+    app: WholeTale
+spec:
+  selector:
+    matchLabels:
+      app: WholeTale
+      tier: frontend
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: WholeTale
+        tier: frontend
+    spec:
+      containers:
+      - image: hategan/wt-girder-gke:latest
+        name: wt-girder
+        env:
+        - name: DOMAIN
+          value: local.wholetale.org
+        - name: DEPLOY_DEV_BRANCHES
+          value: ${DEPLOY_DEV_BRANCHES}
+        ports:
+        - containerPort: 80
+          name: wt-girder
+        volumeMounts:
+        - name: wt-ps
+          mountPath: /tmp/ps
+        - name: girder-config
+          mountPath: /girder/girder/conf/girder.local.cfg
+          subPath: girder.local.cfg
+        - name: girder-config
+          mountPath: /girder/start
+          subPath: start
+      volumes:
+      - name: girder-config
+        configMap:
+          name: girder-configmap
+      - name: wt-ps
+        persistentVolumeClaim:
+          claimName: girder-ps-volume-claim
+

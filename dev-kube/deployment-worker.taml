@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-worker
+  labels:
+    app: WholeTale
+spec:
+  selector:
+    matchLabels:
+      app: WholeTale
+      tier: backend
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: WholeTale
+        tier: backend
+    spec:
+      containers:
+      - image: hategan/wt-gwvolman:latest
+        name: gwvolman
+        # needed for mounting
+        securityContext:
+          privileged: true
+          capabilities:
+            add:
+            - SYS_ADMIN
+        command: ["/bin/sleep"]
+        args: ["36000"]
+        env:
+        - name: HOSTDIR
+          value: "/host"
+        - name: DOMAIN
+          value: ${DOMAIN_NAME}
+        - name: REGISTRY_USER
+          valueFrom:
+            secretKeyRef:
+              name: registry-secret
+              key: username
+        - name: REGISTRY_PASS
+          valueFrom:
+            secretKeyRef:
+              name: registry-secret
+              key: password
+        - name: REGISTRY_URL
+          value: "https://registry.${DOMAIN_NAME}"
+        volumeMounts:
+        - name: worker-config
+          mountPath: /tools/kubetest.py
+          subPath: kubetest.py
+        - name: gwvolman-dev
+          monthPath: /gwvolman-dev
+      volumes:
+      - name: worker-config
+        configMap:
+          name: worker-configmap
+      - name: gwvolman-dev
+        persistentVolumeClaim:
+          claimName: gwvolman-dev-pv
+ 

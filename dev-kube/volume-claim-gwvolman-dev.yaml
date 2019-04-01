@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gwvolman-dev-pvc
+  labels:
+    app: WholeTale
+spec:
+  accessModes:
+    - ReadWriteMany
+  selector:
+    matchLabels:
+      volume-name: gwvolman-dev-pv
+      app: WholeTale
+  resources:
+    requests:
+      storage: 1Mi

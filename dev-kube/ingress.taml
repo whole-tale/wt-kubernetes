@@ -1,0 +1,27 @@
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ingress
+  labels:
+    app: WholeTale
+spec:
+  tls:
+  - hosts:
+    - girder.${DOMAIN_NAME}
+    - dashboard.${DOMAIN_NAME}
+    secretName: site-cert-secret
+  rules:
+  - host: dashboard.${DOMAIN_NAME}
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: dashboard
+          servicePort: 80
+  - host: girder.${DOMAIN_NAME}
+    http:
+      paths:
+      - path: /
+        backend:
+          serviceName: girder
+          servicePort: 8080
