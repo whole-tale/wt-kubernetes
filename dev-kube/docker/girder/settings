@@ -1,0 +1,2 @@
+SOURCE_TAG=wholetale/girder:latest
+TAG=hategan/wt-girder-gke

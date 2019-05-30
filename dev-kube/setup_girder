@@ -1,0 +1,4 @@
+#!/bin/bash
+
+source ./settings
+python3 ./setup_girder.py "https://girder.$DOMAIN_NAME"

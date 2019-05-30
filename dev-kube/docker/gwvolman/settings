@@ -1,0 +1,2 @@
+TAG=hategan/wt-gwvolman:latest
+GWVOLMAN_BRANCH=dev-kube-2.0

@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels:
+    app: WholeTale
+spec:
+  selector:
+    matchLabels:
+      app: WholeTale
+      tier: backend
+      component: redis
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: WholeTale
+        tier: backend
+        component: redis
+    spec:
+      containers:
+      - image: ${REDIS_IMAGE}
+        name: redis

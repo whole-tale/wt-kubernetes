@@ -9,5 +9,5 @@ spec:
   - port: 6379
   selector:
     app: WholeTale
-    tier: backend
+    component: redis
   clusterIP: None

@@ -1,0 +1,4 @@
+#!/bin/bash
+
+flock -x /host/etc/init-tale-pod.lock /usr/local/bin/update-node
+/usr/local/bin/build-tale-workspace "$@"

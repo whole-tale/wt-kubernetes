@@ -36,24 +36,33 @@ done
 
 checkDir
 run "Creating temporary directory" mkdir -p tmp
-run "Checking settings" mustBeSet CREATE_CLUSTER CLUSTER_NAME DOMAIN_NAME GLOBUS_CLIENT_ID GLOBUS_CLIENT_SECRET
+run "Checking settings" mustBeSet CREATE_CLUSTER CLUSTER_NAME DOMAIN_NAME GLOBUS_CLIENT_ID GLOBUS_CLIENT_SECRET VOLSZ_WORKSPACE
 export DOMAIN_NAME
 run "Unpacking certificate" ./check_certs.sh
 
 if [ "$CREATE_CLUSTER" == "1" ]; then
 	if [ "$CLUSTER_TYPE" == "gke" ]; then
+		run "Checking GKE config" mustBeSet GKE_INITIAL_NODE_COUNT GKE_MACHINE_TYPE
+		emit "Creating GKE cluster... "
 		runif "$GKE_PROJECT_ID" "Setting GKE project" gcloud config \
 			set project "$GKE_PROJECT_ID"
 		runif "$GKE_COMPUTE_REGION" "Setting GKE region" gcloud config \
 			set compute/region "$GKE_COMPUTE_REGION"
-
-		# Need 3 nodes for this example: girder, mongo, and tales
+		
 		if ! contains "$CLUSTER_NAME" gcloud container clusters list || [ "$CONTINUE" == "0" ] ; then
+			# The repo2docker builds are memory hungry
 			run "Creating GKE cluster" gcloud container clusters create \
-				"$CLUSTER_NAME" --num-nodes=3
+				"$CLUSTER_NAME" --num-nodes=$GKE_INITIAL_NODE_COUNT --machine-type=$GKE_MACHINE_TYPE
 			run "Generating kubeconfig entry" gcloud container clusters \
 				get-credentials "$CLUSTER_NAME"
 		fi
+		#run "Adding admin user " kubectl create clusterrolebinding cluster-admin-binding \
+		#	--clusterrole cluster-admin --user $(gcloud config get-value account)
+		#run "Enabling NGINX ingress (1)" kubectl apply -f \
+		#	https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/mandatory.yaml
+		#run "Enabling NGINX ingress (2)" kubectl apply -f \
+		#	https://raw.githubusercontent.com/kubernetes/ingress-nginx/master/deploy/provider/cloud-generic.yaml
+		emitn "done" $C_BRT_GREEN
 	elif [ "$CLUSTER_TYPE" == "minikube" ]; then
 		if ! minikube status 2>&1 >>/dev/null || [ "$CONTINUE" == "0" ] ; then
 			# Just in case minikube wants root, do this and hope that sudo is configured
@@ -74,34 +83,46 @@ if [ "$CREATE_CLUSTER" == "1" ]; then
 	elif [ "$CLUSTER_TYPE" == "none" ]; then
 		echo "Skipping cluster creation (CLUSTER_TYPE is 'none')"
 	fi
-	if [ "$CLUSTER_TYPE" != "none" ]; then
-		echo -n "Deploying volume plugins"
-			run "Deploying WebDAV plugin" kubectl create -f ./csi-drivers/deployment
-			run "Waiting a bit" sleep 5
-		echo
-	fi
+	#if [ "$CLUSTER_TYPE" != "none" ]; then
+	#	echo -n "Deploying volume plugins"
+	#		run "Deploying WebDAV plugin" kubectl create -f ./csi-drivers/deployment
+	#		run "Waiting a bit" sleep 5
+	#	echo
+	#fi
+	
 fi
 
-createTLSSecret "dev-cert-secret" ./certs/dev.key ./certs/dev.crt
+createTLSSecret "registry-cert-secret" ./certs/registry.key ./certs/registry.crt
 createTLSSecret "site-cert-secret" ./certs/ssl.key ./certs/ssl.crt
 createSecretFromFile "registry-secret" secret-registry
 
+# Special kind of secret for docker registries. See 
+# https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/ 
+run "Creating docker-registry secret" kubectl create secret docker-registry registry-credentials \
+	--docker-server="registry:443" --docker-username="fido" --docker-password="secretpass" \
+	--docker-email="fido@example.com"
+
+run "Creating gwvolman account" kubectl create -f ./serviceaccount-worker.yaml
+
 echo -n "Creating volumes: "
-createVolume mongo $VOLSZ_MONGO_DATA
-createVolume registry-storage $VOLSZ_REGISTRY_STORAGE
-createVolume girder-ps $VOLSZ_GIRDER_PS
+createVolumeClaim mongo $VOLSZ_MONGO_DATA
+createVolumeClaim registry-storage $VOLSZ_REGISTRY_STORAGE
+createVolumeClaim girder-ps $VOLSZ_GIRDER_PS
+createVolumeClaim docker-storage $VOLSZ_DOCKER_STORAGE
+createVolumeClaim image-build-dirs $VOLSZ_IMAGE_BUILD_DIRS
 echo
 
 
 echo -n "Deploying: "
-createFromYaml "gwvolman-dev volume claim" volume-claim-gwvolman-dev
-createFromYaml "gwvolman-dev volume" volume-gwvolman-dev
-startService mongo
-startService redis
-startService registry
-startService girder -c ./girder/girder.local.cfg ./girder/start
-startService dashboard
-startService worker -c ./gwvolman/kubetest.py
+export MONGO_IMAGE REDIS_IMAGE REGISTRY_IMAGE GIRDER_IMAGE DASHBOARD_IMAGE WORKER_IMAGE VOLSZ_WORKSPACE
+deploy mongo
+deploy redis
+deploy registry
+createConfigmap girder-configmap ./girder/girder.local.cfg ./girder/start ./girder/k8s-entrypoint.sh
+deploy girder
+deploy dashboard
+createConfigmap worker-configmap ./images/gwvolman/kubetest.py
+deploy worker
 
 if ! exists ingress ingress || [ "$CONTINUE" == "0" ] ; then
 	export DOMAIN_NAME
@@ -109,12 +130,16 @@ if ! exists ingress ingress || [ "$CONTINUE" == "0" ] ; then
 fi
 echo
 
-
-CLUSTER_IP=`kubectl cluster-info|grep "master"|awk '{print $6}'|awk -F ':' '{print substr($2, 3)}'`
-echo "Cluster IP: $CLUSTER_IP"
 export GLOBUS_CLIENT_ID
 export GLOBUS_CLIENT_SECRET
-run "Setting up girder" ./setup_girder.py "http://$CLUSTER_IP:$GIRDER_EXTERNAL_PORT"
+
+GIRDER_URL="https://girder.$DOMAIN_NAME"
+
+if [ "$CLUSTER_TYPE" == "gke" ]; then
+	./wait_for_ingress.sh "$DOMAIN_NAME" "$GIRDER_URL"
+fi
+
+run "Setting up girder" ./setup_girder.sh
 
 if [ "$KEEP_TEMPS" == "0" ]; then
 	run "Deleting temporary yaml files" rm -f tmp/.*.yaml

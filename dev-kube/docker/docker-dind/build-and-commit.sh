@@ -2,9 +2,5 @@
 
 source ./settings
 
-export SOURCE_TAG
-
-cat Dockerfile.template | envsubst > Dockerfile
-
 docker build -t $TAG . &&\
 docker push $TAG

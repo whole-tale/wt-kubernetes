@@ -9,6 +9,7 @@ spec:
     matchLabels:
       app: WholeTale
       tier: frontend
+      component: girder
   strategy:
     type: Recreate
   template:
@@ -16,10 +17,13 @@ spec:
       labels:
         app: WholeTale
         tier: frontend
+        component: girder
     spec:
       containers:
-      - image: hategan/wt-girder-gke:latest
+      - image: ${GIRDER_IMAGE}
         name: wt-girder
+        command: ["/bin/bash"]
+        args: ["/usr/local/bin/k8s-entrypoint.sh", "girder", "serve"]
         env:
         - name: DOMAIN
           value: local.wholetale.org
@@ -37,6 +41,9 @@ spec:
         - name: girder-config
           mountPath: /girder/start
           subPath: start
+        - name: girder-config
+          mountPath: /usr/local/bin/k8s-entrypoint.sh
+          subPath: k8s-entrypoint.sh
       volumes:
       - name: girder-config
         configMap:

@@ -1,51 +1,23 @@
 #!/bin/bash
 
-wait_for_file() {
+check_file() {
 	FILE=$1
 	DIR=`readlink -m $FILE`
 	while [ ! -f $FILE ]; do
-		echo "Missing $FILE. Copy it into $DIR and press any key..."
-		read -s -n 1
-	done
-}
-
-extract_file() {
-	ARCHIVE=$1
-	FILE=$2
-	
-	tar --strip-components=1 -C certs -xf $ARCHIVE $FILE
-	EXTRACTION_OK=$?
-	if [ "$EXTRACTION_OK" != "0" ] ; then
-		echo "The archive $ARCHIVE is missing the file $FILE. Ensure that you have the correct .tar file and press any key..."
-		read -s -n 1
-		return 1
-	else
-		echo "$FILE extracted successfully"
-		return 0
-	fi
-}
-
-run() {
-	"$@"
-	if [ "$?" != "0" ]; then
-		echo "$@ failed"
+		echo "Missing $FILE"
 		exit 1
-	fi
+	done
 }
 
 CERTS_OK=0
 
-while [ "$CERTS_OK" == "0" ] ; do
-	echo "Checking certificates"
-	wait_for_file certs/certs.tar
-	echo "Certificates archive found"
+echo "Checking certificate"
+check_file certs/acme.json
+echo "Main certificate file found"
 
-	extract_file certs/certs.tar certs/dev.key && \
-	extract_file certs/certs.tar certs/dev.crt && \
-	extract_file certs/certs.tar acme/acme.json
-	
-	CERTS_OK=!$?
-done
+echo "Generating registry cert"
+openssl req -x509 -sha256 -nodes -days 365 -newkey rsa:2048 -keyout certs/registry.key -out certs/registry.crt \
+  -subj "/C=US/ST=IL/L=Chicago/O=Whole Tale/OU=CI/CN=registry"
 
 chmod 600 certs/acme.json
 ./extract_acme_cert.py certs/acme.json certs/ssl.crt certs/ssl.key

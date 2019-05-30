@@ -2,12 +2,12 @@
 #
 # Cluster type. Supported values are:
 #	"gke": Google Kubernetes Engine
-#	"minikube": Local cluster with minikube
+#	"minikube": Local cluster with minikube (most likely not working)
 #	"none": if you want to manually configure the cluster up to the point
 #	        where kubectl can take over (can be used with minikube)
 #
 
-CLUSTER_TYPE="minikube"
+CLUSTER_TYPE="gke"
 
 #
 # Uncomment and set to use a specific GKE project id instead of the default
@@ -18,6 +18,26 @@ CLUSTER_TYPE="minikube"
 # Uncomment and set to use a specific region
 #
 # GKE_COMPUTE_REGION="us-west1-a"
+
+#
+# How many nodes should the cluster start with. Too few nodes, and 
+# (depending on the pods/node value) some pods won't start. "Initial"
+# here means that the count can change based on whether autoscaling
+# is enabled, but autoscaling is not handled here.
+#
+
+GKE_INITIAL_NODE_COUNT=4
+
+#
+# Docker builds are somewhat memory hungry (see deployment-worker.yaml).
+# Ideally, one would use a heterogeneous cluster, with node pools tailored
+# to pods' needs. This may or may not be possible. The page at 
+# https://cloud.google.com/kubernetes-engine/docs/how-to/node-pools suggests
+# that it may be possible to add node pools of various forms to an existing
+# cluster. For now, we work with simple homogeneous clusters.
+#
+
+GKE_MACHINE_TYPE=n1-highmem-2
 
 #
 # VM type to use with minikube
@@ -31,9 +51,17 @@ MINIKUBE_VM_TYPE="virtualbox"
 
 CLUSTER_NAME="wholetale"
 
+############################################################
+#                                                          #
+#                       Volumes                            #
+#                                                          #
+############################################################
 #
-# Size of mongo config volume
-#
+# Volumes are created automatically using a persistent volume 
+# claim which lets Kubernetes dynamically provision the volumes.
+# For custom volumes (such as local volumes that need not be
+# persisted across pod reschedules or for using a fixed persistent
+# GCE disk, use custom taml/yaml specs
 
 VOLSZ_MONGO_CFG="20Mi"
 
@@ -47,7 +75,7 @@ VOLSZ_MONGO_DATA="200Mi"
 # Size of registry storage
 #
 
-VOLSZ_REGISTRY_STORAGE="20Mi"
+VOLSZ_REGISTRY_STORAGE="4Gi"
 
 #
 # Size of WholeTale physical storage (for caching datasets)
@@ -56,29 +84,23 @@ VOLSZ_REGISTRY_STORAGE="20Mi"
 VOLSZ_GIRDER_PS="200Mi"
 
 #
-# Type of volumes to create if no specific volumes
-# are manually specified using volume-<name>.yaml files. Will
-# use volume-auto-<AUTO_VOLUME_TYPE>.taml. Currently supported
-# volume types are:
-#     * local - for use with minikube; creates the volumes in
-#               local directories inside volume-dirs/
+# Volume used for storing layers for image builds
 #
 
-AUTO_VOLUME_TYPE=local
+VOLSZ_DOCKER_STORAGE="10Gi"
 
 #
-# The range of ports allowed for exposing cluster services
-# to the outside world.
+# Volume used to assemble build contexts for repo2docker
 #
 
-EXTERNAL_PORT_RANGE=1000-10000
+VOLSZ_IMAGE_BUILD_DIRS="4Gi"
 
 #
-# The external cluster port to map Girder to. This must fall
-# within EXTERNAL_PORT_RANGE
+# Volumes for tale instance workspace. In this naive setup,
+# each instance gets a fixed volume of the specified size.
 #
 
-GIRDER_EXTERNAL_PORT=8080
+VOLSZ_WORKSPACE="1Gi"
 
 #
 # The domain name of the cluster to configure ingress
@@ -90,5 +112,17 @@ DOMAIN_NAME=local.wholetale.org
 # Globus app secrets
 #
 
-GLOBUS_CLIENT_ID=""
-GLOBUS_CLIENT_SECRET=""
+GLOBUS_CLIENT_ID="3a3d537c-9ac5-4e9d-8790-d92dd5eb3b07"
+GLOBUS_CLIENT_SECRET="JATkgV1xR2ROlrGdDhEbHaZY65H6UTOHEJ3aLKJfBnk="
+
+#
+# Images to use
+# 
+
+GIRDER_IMAGE=wholetale/girder:latest
+DASHBOARD_IMAGE=wholetale/dashboard:latest
+MONGO_IMAGE=mongo:3.2
+REDIS_IMAGE=redis
+REGISTRY_IMAGE=registry:2.6
+WORKER_IMAGE=hategan/wt-gwvolman:latest
+GIRDERFS_DRIVER_IMAGE=hategan/wt-girderfs-flexvolume:0.0.1

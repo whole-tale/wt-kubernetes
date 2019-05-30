@@ -6,8 +6,8 @@ metadata:
     app: WholeTale
 spec:
   ports:
-  - port: 444
+  - port: 443
   selector:
     app: WholeTale
-    tier: backend
+    component: registry
   clusterIP: None

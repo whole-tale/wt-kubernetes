@@ -7,5 +7,5 @@ metadata:
 spec:
   selector:
     app: WholeTale
-    tier: backend
+    component: worker
   clusterIP: None

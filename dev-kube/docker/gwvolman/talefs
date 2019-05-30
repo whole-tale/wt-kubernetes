@@ -1,0 +1,57 @@
+#!/bin/bash
+
+DEST=/workspace
+CMD="$1"
+INSTANCE_ID="$2"
+API_URL="$3"
+SESSION_ID="$4"
+HOME_ID="$5"
+TALE_ID="$6"
+
+
+_mount() {
+	local TYPE="$1"
+	local MOUNTPOINT="$2"
+	local OBJECT_ID="$3"
+	girderfs -c $TYPE --api-url "$API_URL" --api-key "$GIRDER_API_KEY" "$MOUNTPOINT" "$OBJECT_ID"
+	if [ "$?" != "0" ]; then
+		echo "Failed: girderfs -c $TYPE --api-url $API_URL --api-key $GIRDER_API_KEY $MOUNTPOINT $OBJECT_ID"
+		exit 1
+	fi
+}
+
+_umount() {
+	local DIR="$2"
+	local FORCE="$1"
+	if cat /etc/mtab | awk '{print $2}' | grep -F "$DIR" ; then
+		umount $FORCE "$DIR"
+	fi
+}
+
+if [ "$CMD" == "mount" ]; then
+
+	if [ "$SESSION_ID" != "" ]; then
+		mkdir -p "$DEST/data"
+		_mount wt_dms "$DEST/data" "$SESSION_ID"
+	fi
+
+	mkdir -p "$DEST/home"
+	_mount wt_home "$DEST/home" "$HOME_ID"
+
+
+	if [ "$TALE_ID" != "" ]; then
+		mkdir -p "$DEST/workspace"
+		_mount wt_work "$DEST/workspace" "$TALE_ID"
+	fi
+	sleep 1
+	pstree 2>&1 >>/tmp/pstree.out
+	sleep 1
+elif [ "$CMD" == "unmount" ]; then
+	_umount "" "$DEST/data"
+	_umount "" "$DEST/home"
+	_umount "" "$DEST/workspace"
+	sleep 5
+	_umount -f "$DEST/data"
+	_umount -f "$DEST/home"
+	_umount -f "$DEST/workspace"
+fi

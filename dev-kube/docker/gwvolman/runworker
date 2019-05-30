@@ -1,0 +1,3 @@
+#!/bin/bash
+
+python3 -m girder_worker -l DEBUG -Q manager,celery,node1

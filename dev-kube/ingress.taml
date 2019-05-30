@@ -4,24 +4,25 @@ metadata:
   name: ingress
   labels:
     app: WholeTale
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   tls:
   - hosts:
     - girder.${DOMAIN_NAME}
     - dashboard.${DOMAIN_NAME}
     secretName: site-cert-secret
+
   rules:
   - host: dashboard.${DOMAIN_NAME}
     http:
       paths:
-      - path: /
-        backend:
+      - backend:
           serviceName: dashboard
           servicePort: 80
   - host: girder.${DOMAIN_NAME}
     http:
       paths:
-      - path: /
-        backend:
+      - backend:
           serviceName: girder
           servicePort: 8080

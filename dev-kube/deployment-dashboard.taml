@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+  labels:
+    app: WholeTale
+spec:
+  selector:
+    matchLabels:
+      app: WholeTale
+      tier: frontend
+      component: dashboard
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: WholeTale
+        tier: frontend
+        component: dashboard
+    spec:
+      containers:
+      - image: ${DASHBOARD_IMAGE}
+        name: dashboard
+        ports:
+        - containerPort: 80
+          name: dashboard
+        env:
+        - name: GIRDER_API_URL
+          value: https://girder.local.wholetale.org
+        - name: AUTH_PROVIDER
+          value: Globus

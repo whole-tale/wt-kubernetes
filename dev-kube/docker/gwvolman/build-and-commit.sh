@@ -1,4 +1,6 @@
 #!/bin/bash
 
-docker build -t hategan/wt-gwvolman:latest . &&\
-docker push hategan/wt-gwvolman:latest
+source ./settings
+
+docker build --build-arg "GWVOLMAN_BRANCH=${GWVOLMAN_BRANCH}" -t $TAG . &&\
+docker push $TAG

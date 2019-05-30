@@ -1,5 +1,7 @@
 #!/bin/bash
 
+LOG=deployment.log
+
 C_MAGENTA="\e[35m"
 C_DEFAULT="\e[39m"
 C_BRT_YELLOW="\e[93m"
@@ -7,13 +9,11 @@ C_BRT_GREEN="\e[92m"
 C_BRT_RED="\e[91m"
 C_BRT_GRAY="\e[37m"
 
-LOG=kube.log
-
 set -o pipefail
 
 logCommand() {
 	echo $'\n\n' >> $LOG
-	echo "$@" >>$LOG
+	echo "$@" >> $LOG
 	echo $'\n' >> $LOG
 }
 
@@ -26,11 +26,11 @@ run() {
 	EC=$?
 	
 	if [ "$EC" != "0" ]; then
-		echo -e "[${C_BRT_RED}$NAME failed${C_DEFAULT}]"
-		echo -e "${C_BRT_YELLOW}Exit code: $EC${C_DEFAULT}"
+		emitn "failed" $C_BRT_RED
+		emitn "Exit code: $EC" $C_BRT_YELLOW
 		
 		if [ "$OUT" != "" ]; then
-			echo -e "${C_BRT_YELLOW}$OUT${C_DEFAULT}"
+			emitn "$OUT" $C_BRT_YELLOW
 		fi
 		
 		exit 1
@@ -46,11 +46,11 @@ runc() {
 	EC=$?
 	
 	if [ "$EC" != "0" ]; then
-		echo -e "[${C_BRT_RED}$NAME failed${C_DEFAULT}]"
-		echo -e "${C_BRT_YELLOW}Exit code: $EC${C_DEFAULT}"
+		emitn "failed" $C_BRT_RED
+		emitn "Exit code: $EC" $C_BRT_YELLOW
 		
 		if [ "$OUT" != "" ]; then
-			echo -e "${C_BRT_YELLOW}$OUT${C_DEFAULT}"
+			emitn "$OUT" $C_BRT_YELLOW
 		fi
 		
 		exit 1
@@ -61,8 +61,6 @@ runif() {
 	if [ "$1" != "" ]; then
 		shift
 		run "$@"
-	else
-		echo -e "$2... [${C_BRT_YELLOW}skipped${C_DEFAULT}]"
 	fi
 }
 
@@ -72,14 +70,14 @@ mustBeSet() {
 		NAME=$1
 		eval VAL=\$$NAME
 		if [ "$VAL" == "" ]; then
-			fail "${C_BRT_RED}Missing $1${C_DEFAULT}"
+			fail "Missing $1"
 		fi
 		shift
 	done
 }
 
 fail() {
-	echo -e "${C_BRT_RED}$1${C_DEFAULT}"
+	emitn "$1" $C_BRT_RED 
 	exit 1
 }
 
@@ -188,24 +186,10 @@ shouldStart() {
 getArgs() {
 	ARGS=()
 	NARGS=1
-	TYPE="$1"
-	shift
 	while [ "$1" != "" ]; do
-		case "$1" in
-			-*)
-				;&
-			"")
-				if [ "$NARGS" == "1" ]; then
-					fail "Missing arguments for $TYPE"
-				fi
-				return
-				;;
-			*)
-				ARGS+=("--from-file" "$1")
-				shift
-				NARGS=$((NARGS + 1))
-				;;
-		esac
+		ARGS+=("--from-file" "$1")
+		shift
+		NARGS=$((NARGS + 1))
 	done
 }
 
@@ -222,40 +206,59 @@ createFromYaml() {
 	run "Creating $LABEL" kubectl create -f "tmp/$DEST.yaml"
 }
 
-startService() {
+createConfigmap() {
+	local NAME="$1"
+	shift
+	getArgs "$@"
+	if exists configmap "$NAME" ; then
+		run "Deleting old configmap $NAME" kubectl delete configmap "$NAME"
+	fi
+	run "Creating configmap $NAME" kubectl create configmap "$NAME" "${ARGS[@]}"
+	run "Labeling configmap $NAME" kubectl label configmap "$NAME" "app=WholeTale"
+}
+
+createGenericSecret() {
+	local NAME="$1"
+	shift
+	getArgs "$@"
+	if exists secret generic "$NAME" ; then
+		run "Deleting old secret $NAME" kubectl delete secret "$NAME"
+	fi
+	run "Creating secret $NAME" kubectl create secret generic "$NAME" "${ARGS[@]}"
+	run "Labeling secret $NAME" kubectl label secret "$NAME" "app=WholeTale"
+}
+
+emit() {
+	local MSG="$1"
+	local COLOR="$2"
+	
+	echo -n -e "${COLOR}$MSG${C_DEFAULT}"
+}
+
+emitn() {
+	local MSG="$1"
+	local COLOR="$2"
+	
+	echo -e "${COLOR}$MSG${C_DEFAULT}"
+}
+
+deploy() {
 	local NAME="$1"
 	shift
 	if ! exists service "$NAME" ; then
-		createFromYaml "service $NAME" "service-$NAME"
+		if [ -f "service-$NAME.?aml" ]; then
+			createFromYaml "service $NAME" "service-$NAME"
+		fi
 	fi
 	if ! exists deployment "$NAME" ; then
-		while [ "$1" != "" ]; do
-			getArgs "$@"
-			if [ "$1" == "-s" ]; then
-				TYPE="secret"
-				EXTRA="generic"
-			elif [ "$1" == "-c" ]; then
-				TYPE="configmap"
-				EXTRA=""
-			else
-				fail "Unknown file types: $1"
-			fi
-			shift $NARGS
-			
-			if exists $TYPE "$NAME-$TYPE" ; then
-				run "Deleting old $NAME $TYPE" kubectl delete $TYPE "$NAME-$TYPE"
-			fi
-			run "Creating $NAME $TYPE" kubectl create $TYPE $EXTRA "$NAME-$TYPE" "${ARGS[@]}"
-			run "Labeling $NAME $TYPE" kubectl label $TYPE "$NAME-$TYPE" "app=WholeTale"
-		done
 		createFromYaml "deployment $NAME" "deployment-$NAME"
-		echo -n -e "${C_BRT_GREEN}$NAME${C_DEFAULT} "
+		emit "$NAME " $C_BRT_GREEN 
 	else
-		echo -n -e "${C_BRT_YELLOW}$NAME${C_DEFAULT} "
+		emit "$NAME " $C_BRT_YELLOW 
 	fi
 }
 
-createVolume() {
+createVolumeClaim() {
 	local NAME="$1"
 	local SIZE="$2"
 	export CLAIM_NAME="$NAME-volume-claim"
@@ -263,23 +266,15 @@ createVolume() {
 	export VOLUME_NAME="$NAME-volume"
 	export SHORT_NAME="$NAME"
 	
-	if ! exists persistentvolume "$VOLUME_NAME" ; then
-		if [ -f "./volume-$NAME.taml" ] || [ -f "./volume-$NAME.yaml" ] ; then
-			createFromYaml "volume $NAME" "volume-$NAME"
+	if ! exists pvc "$CLAIM_NAME" ; then
+		if [ -f "./volume-claim-$NAME.taml" ] || [ -f "./volume-claim-$NAME.yaml" ] ; then
+			createFromYaml "volume claim $NAME" "volume-claim-$NAME"
 		else
-			# Use auto
-			if [ "$AUTO_VOLUME_TYPE" == "local" ]; then
-				run "Creating volume directory $NAME" mkdir -p "volume-dirs/$NAME"
-			fi
-			createFromYaml "volume $NAME" "volume-auto-$AUTO_VOLUME_TYPE" ".volume-$NAME"
+			createFromYaml "volume claim $NAME" "volume-claim-dynamic" ".volume-claim-$NAME"
 		fi
-		echo -n -e "${C_BRT_GREEN}$NAME${C_DEFAULT} "
+		emit "$NAME " $C_BRT_GREEN 
 	else
-		echo -n -e "${C_BRT_YELLOW}$NAME${C_DEFAULT} "
-	fi
-	
-	if ! exists persistentvolumeclaim "$CLAIM_NAME" ; then
-		createFromYaml "volume claim $NAME" "volume-claim" ".volume-claim-$NAME"
+		emit "$NAME " $C_BRT_YELLOW 
 	fi
 }
 

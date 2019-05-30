@@ -1,0 +1,105 @@
+#!/bin/bash
+
+# We need to be able to use images for pod containers from 
+# our registry. But at this point the DNS that is configured
+# on the node does not resolve cluster service names. So
+# we copy the DNS from the pod to the node. In addition,
+# the registry CA needs to be installed.
+
+# As far as I understand, this may be GKE specific and
+# also specific to a particular version of Kubernetes.
+# From https://kubernetes.io/docs/tasks/administer-cluster/dns-debugging-resolution/#known-issues 
+#   "Kubernetes installs do not configure the nodes' 
+#    resolv.conf files to use the cluster DNS by default, 
+#    because that process is inherently distribution-specific. 
+#    This should probably be implemented eventually."
+
+
+# We want http://registry, but the DNS server
+# only knows registry.default.svc.cluster.local,
+# so we need to add this to the search domains.
+# This will stop working if the default in-cluster
+# domain is changed.
+
+CLUSTER_DOMAIN=default.svc.cluster.local
+
+copyIfDifferent() {
+	# Why bother? We could simply keep copying them over.
+	# Except pods may start concurrently and docker may
+	# be in the process of reading one of these files.
+	# If the files differ, we can be sure that it is the
+	# first time that this script runs in this deployment
+	# on this node.
+	if diff -q "$1" "$2" ; then
+		echo "Skipping $1"
+	else
+		cp "$1" "$2"
+	fi
+}
+
+copyCert() {
+	mkdir -p /host/etc/docker/certs.d/registry
+	mkdir -p /host/etc/docker/certs.d/registry:443
+	
+	copyIfDifferent /registry-cert/ca.crt /host/etc/docker/certs.d/registry/ca.crt
+	copyIfDifferent /registry-cert/ca.crt /host/etc/docker/certs.d/registry:443/ca.crt
+}
+
+resolve() {
+	# we need this because readlink -f will fail on absolute links
+	CRT="$1"
+	while true ; do
+		NEXT=`readlink $CRT`
+		if [ "$NEXT" == "" ] ; then
+			echo "$CRT"
+			return
+		fi
+		CRT="/host/$NEXT"
+	done
+}
+
+updateDNS() {
+	IN=`resolve /host/etc/resolv.conf`
+	echo "IN: $IN"
+	POD_DNS=`cat /etc/resolv.conf|grep nameserver|awk '{print $2}'`
+	HOST_DNS=`cat $IN|grep "^nameserver"|awk '{print $2}'`
+	HOST_SEARCH=`cat $IN|grep "^search"|awk '{$1=""; print $0}'`
+	OUT=/host/etc/resolv.conf.new
+	# ensure we start from scratch
+	rm -f $OUT
+	echo "POD_DNS: $POD_DNS, HOST_DNS: $HOST_DNS, HOST_SEARCH: $HOST_SEARCH"
+	
+	echo "$HOST_SEARCH" | grep -F $CLUSTER_DOMAIN
+	DOMAIN=$?
+	
+	if [ "$POD_DNS" != "$HOST_DNS" ] || [ "$DOMAIN" == "1" ] ; then
+		# Is it possible for POD_DNS to change in the same deployment?
+		# Nobody knows...
+		while IFS= read -r LINE ; do
+			case $LINE in
+				nameserver*)
+					echo "nameserver $POD_DNS" >> $OUT
+					;;
+				search*)
+					# check so that we don't keep adding the same domain
+					# over and over
+					if [ "$DOMAIN" == "1" ] ; then
+						echo "search $CLUSTER_DOMAIN $HOST_SEARCH" >> $OUT
+					fi
+					;;
+				*)
+					echo "$LINE" >> $OUT
+					;;
+			esac
+		done < $IN
+		# log the changes
+		diff $IN /host/etc/resolv.conf.new
+		
+		mv /host/etc/resolv.conf.new $IN
+	fi
+}
+
+ls -al /host/etc
+
+copyCert
+updateDNS

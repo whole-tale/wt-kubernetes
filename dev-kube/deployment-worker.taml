@@ -9,6 +9,7 @@ spec:
     matchLabels:
       app: WholeTale
       tier: backend
+      component: worker
   strategy:
     type: Recreate
   template:
@@ -16,23 +17,78 @@ spec:
       labels:
         app: WholeTale
         tier: backend
+        component: worker
     spec:
+      # Not sure how I feel about the docker container
+      # running under this account. Let's hope that
+      # even carefully crafted docker build files cannot
+      # escape the build context and access the cluster
+      # with admin priviledges. We should probably change
+      # this such that the credentials are mounted manually
+      # and only in the gwvolman container
+      serviceAccount: gwvolman-acct
+
       containers:
-      - image: hategan/wt-gwvolman:latest
-        name: gwvolman
+      - name: docker
+        image: hategan/wt-docker-dind:18.09.5
+        securityContext:
+          privileged: true
+        resources:
+          # Careful with these. Too low of a spec could
+          # cause the containers to be evicted during a build.
+          # Also see below for gwvolman. I have not done 
+          # much of an analysis on what the actual requirements
+          # are, but I have seen this fail without limits specified
+          limits:
+            memory: "8Gi"
+          requests:
+            memory: "7Gi"
+        volumeMounts:
+        - name: docker-storage
+          mountPath: /var/lib/docker
+        - name: image-build-dirs
+          mountPath: /src/tmp
+        - name: registry-cert
+          #
+          # Can't have colons in path name since, well, escaping
+          # things through various layers is hard, so must use
+          # default registry port
+          #
+          # But then, again, docker gets confused and thinks
+          # that registry is an image name when pushing and
+          # defaults to docker.io unless there is a port
+          # number, so must make up a domain name with
+          # a dot in it
+          #
+          # The funny thing is that docker fails to push
+          # the image somewhat silently. The call succeeds
+          # but RepoDigests == []
+          #
+          # Anyway, must build image with custom entrypoint
+          # that copies the cert file to the right directory
+          #
+          mountPath: /etc/docker/certs.d/registry
+          readOnly: true
+      - name: gwvolman
+        image: ${WORKER_IMAGE}
         # needed for mounting
         securityContext:
           privileged: true
           capabilities:
             add:
             - SYS_ADMIN
-        command: ["/bin/sleep"]
-        args: ["36000"]
+        resources:
+          limits:
+            memory: "4Gi"
+          requests:
+            memory: "3Gi"
         env:
         - name: HOSTDIR
-          value: "/host"
+          value: "/src"
         - name: DOMAIN
           value: ${DOMAIN_NAME}
+        - name: DOCKER_HOST
+          value: "tcp://localhost:2375"
         - name: REGISTRY_USER
           valueFrom:
             secretKeyRef:
@@ -44,18 +100,38 @@ spec:
               name: registry-secret
               key: password
         - name: REGISTRY_URL
-          value: "https://registry.${DOMAIN_NAME}"
+          value: "https://registry:443"
+        - name: DEPLOYMENT_TYPE
+          value: "kubernetes"
+        - name: VOLSZ_WORKSPACE
+          value: "${VOLSZ_WORKSPACE}"
+        - name: INGRESS_NAME
+          # must match the actual ingress name; the ingress is edited by
+          # gwvolman to expose tales
+          value: "ingress"
+        - name: WORKER_IMAGE
+          value: ${WORKER_IMAGE}
+        - name: GIRDER_API_URL
+          value: "http://girder:8080/api/v1"
         volumeMounts:
         - name: worker-config
           mountPath: /tools/kubetest.py
           subPath: kubetest.py
-        - name: gwvolman-dev
-          monthPath: /gwvolman-dev
+        - name: image-build-dirs
+          mountPath: /src/tmp
       volumes:
       - name: worker-config
         configMap:
           name: worker-configmap
-      - name: gwvolman-dev
+      - name: docker-storage
         persistentVolumeClaim:
-          claimName: gwvolman-dev-pv
- 
+          claimName: docker-storage-volume-claim
+      - name: image-build-dirs
+        persistentVolumeClaim:
+          claimName: image-build-dirs-volume-claim
+      - name: registry-cert
+        secret:
+          secretName: registry-cert-secret
+          items:
+          - key: tls.crt
+            path: ca.crt

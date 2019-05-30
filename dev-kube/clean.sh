@@ -29,17 +29,19 @@ run "Deleting WT services and deployments" kubectl delete deployment,service,ing
 run "Deleting WT volumes" kubectl delete persistentvolume,persistentvolumeclaim,secret,configmap -l app=WholeTale
 run "Deleting WT roles and accounts" kubectl delete serviceaccount,clusterrole,clusterrolebinding,role,rolebinding -l app=WholeTale
 
-if [ "$AUTO_VOLUME_TYPE" == "local" ]; then
+if [ "$AUTO_VOLUME_TYPE" == "local" ] && [ "$CLUSTER_TYPE" == "minikube" ]; then
 	run "Deleting volume-dirs" sudo rm -rf volume-dirs/*
 fi
 
 if [ "$DELETE_CLUSTER" == "1" ]; then
 	if [ "$CLUSTER_TYPE" == "gke" ]; then
+		emit "Deleting GKE cluster... "
 		runif "$GKE_PROJECT_ID" "Setting GKE project" gcloud config set project "$GKE_PROJECT_ID"
 		runif "$GKE_COMPUTE_REGION" "Setting GKE region" gcloud config set compute/region "$GKE_COMPUTE_REGION"
 
 		# might want to add some confirmation if using this for anything else than testing
 		run "Deleting cluster" gcloud --quiet container clusters delete "$CLUSTER_NAME"
+		emitn "done" $C_BRT_GREEN
 	elif [ "$CLUSTER_TYPE" == "minikube" ]; then
 		run "Stopping minikube" minikube stop
 		run "Deleting cluster" minikube delete

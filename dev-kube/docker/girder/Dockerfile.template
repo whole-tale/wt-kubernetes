@@ -1,0 +1,6 @@
+FROM ${SOURCE_TAG}
+
+COPY k8s-entrypoint.sh /usr/local/bin/
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+CMD ["girder", "serve"]

@@ -5,10 +5,10 @@ metadata:
   labels:
     app: WholeTale
 spec:
+  type: NodePort
   ports:
   - name: http
     port: 8080
   selector:
     app: WholeTale
-    tier: frontend
-  clusterIP: None
+    component: girder

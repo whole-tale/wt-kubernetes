@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registry
+  labels:
+    app: WholeTale
+spec:
+  selector:
+    matchLabels:
+      app: WholeTale
+      tier: backend
+      component: registry
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: WholeTale
+        tier: backend
+        component: registry
+    spec:
+      containers:
+      - image: ${REGISTRY_IMAGE}
+        name: registry
+        ports:
+        - containerPort: 443
+          name: registry
+        volumeMounts:
+        - name: registry-storage
+          mountPath: /var/lib/registry
+        - name: registry-password
+          mountPath: /auth
+          readOnly: true
+        - name: registry-cert
+          mountPath: /certs
+          readOnly: true
+        env:
+        - name: REGISTRY_AUTH
+          value: htpasswd
+        - name: REGISTRY_AUTH_HTPASSWD_REALM
+          value: "Registry Realm"
+        - name: REGISTRY_AUTH_HTPASSWD_PATH
+          value: /auth/registry.password
+        - name: REGISTRY_HTTP_ADDR
+          value: 0.0.0.0:443
+        - name: REGISTRY_HTTP_TLS_CERTIFICATE
+          value: /certs/registry.crt
+        - name: REGISTRY_HTTP_TLS_KEY
+          value: /certs/registry.key
+      volumes:
+      - name: registry-storage
+        persistentVolumeClaim:
+          claimName: registry-storage-volume-claim
+      - name: registry-password
+        secret:
+          secretName: registry-secret
+          items:
+          - key: "registry.password"
+            path: "registry.password"
+      - name: registry-cert
+        secret:
+          secretName: registry-cert-secret
+          items:
+          - key: tls.key
+            path: registry.key
+          - key: tls.crt
+            path: registry.crt
