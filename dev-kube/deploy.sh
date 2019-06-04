@@ -1,6 +1,7 @@
 #!/bin/bash
 
 source ./settings
+source ./secrets
 source ./lib
 
 CONTINUE=1

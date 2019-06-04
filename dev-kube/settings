@@ -109,13 +109,6 @@ VOLSZ_WORKSPACE="1Gi"
 DOMAIN_NAME=local.wholetale.org
 
 #
-# Globus app secrets
-#
-
-GLOBUS_CLIENT_ID="3a3d537c-9ac5-4e9d-8790-d92dd5eb3b07"
-GLOBUS_CLIENT_SECRET="JATkgV1xR2ROlrGdDhEbHaZY65H6UTOHEJ3aLKJfBnk="
-
-#
 # Images to use
 # 
 
