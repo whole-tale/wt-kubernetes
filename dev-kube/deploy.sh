@@ -122,7 +122,6 @@ deploy registry
 createConfigmap girder-configmap ./girder/girder.local.cfg ./girder/start ./girder/k8s-entrypoint.sh
 deploy girder
 deploy dashboard
-createConfigmap worker-configmap ./images/gwvolman/kubetest.py
 deploy worker
 
 if ! exists ingress ingress || [ "$CONTINUE" == "0" ] ; then
