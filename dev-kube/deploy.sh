@@ -121,7 +121,7 @@ export MONGO_IMAGE REDIS_IMAGE REGISTRY_IMAGE GIRDER_IMAGE DASHBOARD_IMAGE WORKE
 deploy mongo
 deploy redis
 deploy registry
-createConfigmap girder-configmap ./girder/girder.local.cfg ./girder/start ./girder/k8s-entrypoint.sh
+createConfigmap girder-configmap ./girder/girder.local.cfg ./girder/k8s-entrypoint.sh
 deploy girder
 deploy dashboard
 deploy worker
