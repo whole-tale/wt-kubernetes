@@ -143,7 +143,7 @@ contains() {
 	shift
 	logCommand "$@"
 	
-	"$@" 2>&1 | tee -a $LOG | grep -q "$STR" 2>&1 >> $LOG
+	"$@" 2>&1 | tee -a $LOG | grep -q -F "$STR" 2>&1 >> $LOG
 	if [ "${PIPESTATUS[2]}" == "0" ]; then
 		return 0
 	else
@@ -246,7 +246,7 @@ deploy() {
 	local NAME="$1"
 	shift
 	if ! exists service "$NAME" ; then
-		if [ -f "service-$NAME.?aml" ]; then
+		if [ -f "service-$NAME.yaml" ] || [ -f "service-$NAME.taml" ] ; then
 			createFromYaml "service $NAME" "service-$NAME"
 		fi
 	fi
