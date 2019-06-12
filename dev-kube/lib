@@ -12,9 +12,9 @@ C_BRT_GRAY="\e[37m"
 set -o pipefail
 
 logCommand() {
-	echo $'\n\n' >> $LOG
-	echo "$@" >> $LOG
-	echo $'\n' >> $LOG
+	local NOW=`date --rfc-3339=seconds`
+	echo -n $'\n' >> $LOG
+	echo "$NOW RUN " "$@" >> $LOG
 }
 
 run() {
