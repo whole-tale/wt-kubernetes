@@ -114,15 +114,9 @@ spec:
         - name: GIRDER_API_URL
           value: "http://girder:8080/api/v1"
         volumeMounts:
-        - name: worker-config
-          mountPath: /tools/kubetest.py
-          subPath: kubetest.py
         - name: image-build-dirs
           mountPath: /src/tmp
       volumes:
-      - name: worker-config
-        configMap:
-          name: worker-configmap
       - name: docker-storage
         persistentVolumeClaim:
           claimName: docker-storage-volume-claim
