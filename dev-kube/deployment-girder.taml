@@ -39,9 +39,6 @@ spec:
           mountPath: /girder/girder/conf/girder.local.cfg
           subPath: girder.local.cfg
         - name: girder-config
-          mountPath: /girder/start
-          subPath: start
-        - name: girder-config
           mountPath: /usr/local/bin/k8s-entrypoint.sh
           subPath: k8s-entrypoint.sh
       volumes:
