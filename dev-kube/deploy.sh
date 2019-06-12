@@ -102,6 +102,8 @@ createSecretFromFile "registry-secret" secret-registry
 run "Creating docker-registry secret" kubectl create secret docker-registry registry-credentials \
 	--docker-server="registry:443" --docker-username="fido" --docker-password="secretpass" \
 	--docker-email="fido@example.com"
+run "Labeling docker-registry secret" kubectl label secret registry-credentials app=WholeTale
+
 
 run "Creating gwvolman account" kubectl create -f ./serviceaccount-worker.yaml
 
